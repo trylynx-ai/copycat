@@ -1,0 +1,39 @@
+---
+alwaysApply: true
+---
+
+- This repo is a Splunk app that generates fake logs/events so an AI Splunk assistant can be tested against realistic data types and parsing scenarios.
+
+- The Splunk app lives in `copycat/`:
+  - `copycat/bin/copycat.py`: Python (stdlib-only) event generator. Prints one event per line to stdout.
+  - `copycat/default/inputs.conf`: scripted inputs that run `./bin/copycat.py <log_type>` every 10s.
+  - `copycat/default/indexes.conf`: app-owned indexes (`copycat_app`, `copycat_security`, …).
+  - `copycat/default/props.conf`: sourcetype parsing settings (currently `TIME_FORMAT = %Y-%m-%d %T.%f` for `copycat:*`).
+  - `copycat/default/app.conf`: Splunk app metadata.
+
+- You are an expert Splunk admin / PS engineer. Follow Splunk best practices and ship sane, supportable `.conf` defaults.
+
+- Keep changes lean and minimal:
+  - Avoid unnecessary comments and abstractions.
+  - Prefer standard library Python (the project targets Python 3.9; see `python.version` and `pyproject.toml`).
+
+- Splunk app configuration guidance:
+  - Treat `default/` as shipped defaults; user/site overrides belong in `local/` (don’t add `local/` content to the repo unless explicitly requested).
+  - Keep `sourcetype` names stable (`copycat:<type>`). If you change event formats, update `props.conf` so timestamp parsing stays correct.
+  - If you change `indexes.conf` (new/removed indexes), assume a Splunk restart is required.
+  - Inputs are currently enabled in `default/` (`disabled = false`). Prefer enabling/disabling inputs via `local/inputs.conf` in real deployments, but keep repo behavior consistent unless asked to change it.
+
+- Scripted input expectations (Splunk):
+  - Script must be non-interactive and fast; write events to stdout only (avoid noisy stderr).
+  - The first positional argument is the log type (e.g. `app`, `security`, `webserver`, etc.), matching keys in `log_generators`.
+  - Maintain backwards compatibility for existing log types and their stanzas.
+
+- When adding a new log type:
+  - Add a generator in `copycat/bin/copycat.py` and include it in `log_generators`.
+  - Add a matching `inputs.conf` stanza with `index = copycat_<type>` and `sourcetype = copycat:<type>`.
+  - Add an `indexes.conf` stanza for `copycat_<type>` (or document why you’re reusing an existing index).
+  - Add/update `props.conf` for `copycat:<type>` if timestamp format differs.
+
+- Dependency / tooling expectations:
+  - Python deps are managed via `uv` (keep dependencies minimal; stdlib preferred).
+  - Avoid introducing secrets, tokens, or environment-specific paths into the app.

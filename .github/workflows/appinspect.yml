@@ -1,0 +1,37 @@
+name: AppInspect
+
+on:
+  push:
+    branches:
+      - main
+      - release
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-app:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Prepare build directory for AppInspect
+        run: |
+          mkdir -p build
+          cp -a copycat build/copycat
+          tar -czvf ./build/copycat.tgz -C build copycat
+          rm -rf build/copycat
+
+      - name: Run AppInspect
+        uses: splunk/appinspect-cli-action@v2
+        with:
+          app_path: 'build/copycat.tgz'
+
+      - name: Upload app as artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/release'
+        uses: actions/upload-artifact@v7
+        with:
+          path: 'build/copycat.tgz'
+          compression-level: 0
