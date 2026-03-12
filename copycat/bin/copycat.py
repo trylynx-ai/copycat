@@ -1,7 +1,11 @@
-import random
-import datetime
-import uuid
 import argparse
+import csv
+import datetime
+import json
+import math
+import os
+import random
+import uuid
 
 def fake_ipv4():
     return f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 255)}"
@@ -94,6 +98,30 @@ log_generators = {
     "metrics": generate_metrics_logs
 }
 
+APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOOKUP_ENV_PATH = os.path.join(APP_ROOT, "lookups", "copycat_env.csv")
+STATE_PATH = os.path.join(APP_ROOT, "var", "copycat_runtime_state.json")
+
+DEFAULT_INTERVAL_SEC = 10
+
+ENV_VAR_MAP = {
+    "copycat_log_types": "COPYCAT_LOG_TYPES",
+    "copycat_max_ingest_mb_day": "COPYCAT_MAX_INGEST_MB_DAY",
+}
+
+ESTIMATED_BYTES_PER_EVENT = {
+    "app": 130,
+    "security": 95,
+    "network": 105,
+    "docker": 100,
+    "database": 140,
+    "webserver": 115,
+    "system": 100,
+    "api": 120,
+    "error": 150,
+    "metrics": 90,
+}
+
 def positive_int(value):
     ivalue = int(value)
     if ivalue <= 0:
@@ -105,6 +133,105 @@ def parse_datetime(value):
         return datetime.datetime.fromisoformat(value)
     except ValueError:
         raise argparse.ArgumentTypeError(f"Invalid datetime format: {value}. Use ISO format (e.g., 2024-01-01T12:00:00)")
+
+def load_runtime_env_from_lookup():
+    if not os.path.exists(LOOKUP_ENV_PATH):
+        return
+    try:
+        with open(LOOKUP_ENV_PATH, "r", encoding="utf-8", newline="") as lookup_file:
+            row = next(csv.DictReader(lookup_file), None)
+    except OSError:
+        return
+
+    if not row:
+        return
+
+    for lookup_field, env_var in ENV_VAR_MAP.items():
+        value = row.get(lookup_field)
+        if value is not None:
+            os.environ[env_var] = str(value).strip()
+
+def get_enabled_log_types():
+    raw = os.environ.get("COPYCAT_LOG_TYPES", "").strip()
+    if raw == "":
+        return set(log_generators.keys())
+
+    selected = [log_type.strip() for log_type in raw.split(",")]
+    selected = [log_type for log_type in selected if log_type in log_generators]
+    if not selected:
+        return set(log_generators.keys())
+    return set(selected)
+
+def get_max_ingest_mb_day():
+    raw = os.environ.get("COPYCAT_MAX_INGEST_MB_DAY", "").strip()
+    if raw == "":
+        return None
+    try:
+        value = float(raw)
+        if value > 0:
+            return value
+    except ValueError:
+        return None
+    return None
+
+def compute_interval_sec_from_volume(enabled_types, max_ingest_mb_day):
+    if max_ingest_mb_day is None:
+        return DEFAULT_INTERVAL_SEC
+
+    bytes_per_cycle = sum(ESTIMATED_BYTES_PER_EVENT.get(log_type, 0) for log_type in enabled_types)
+    if bytes_per_cycle <= 0:
+        return DEFAULT_INTERVAL_SEC
+
+    max_day_bytes = max_ingest_mb_day * 1024 * 1024
+    if max_day_bytes <= 0:
+        return DEFAULT_INTERVAL_SEC
+
+    required_interval = int(math.ceil((bytes_per_cycle * 86400) / max_day_bytes))
+    return max(DEFAULT_INTERVAL_SEC, required_interval)
+
+def load_runtime_state():
+    if not os.path.exists(STATE_PATH):
+        return {"last_emit_by_type": {}}
+    try:
+        with open(STATE_PATH, "r", encoding="utf-8") as state_file:
+            state = json.load(state_file)
+    except (OSError, json.JSONDecodeError):
+        return {"last_emit_by_type": {}}
+
+    if "last_emit_by_type" not in state or not isinstance(state["last_emit_by_type"], dict):
+        state["last_emit_by_type"] = {}
+    return state
+
+def save_runtime_state(state):
+    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
+    with open(STATE_PATH, "w", encoding="utf-8") as state_file:
+        json.dump(state, state_file)
+
+def should_emit_event(log_type):
+    try:
+        enabled_types = get_enabled_log_types()
+        if log_type not in enabled_types:
+            return False
+
+        now_epoch = int(datetime.datetime.now().timestamp())
+        interval_sec = compute_interval_sec_from_volume(enabled_types, get_max_ingest_mb_day())
+
+        state = load_runtime_state()
+        last_emit_by_type = state.get("last_emit_by_type", {})
+        last_emit_epoch = int(last_emit_by_type.get(log_type, 0))
+        if now_epoch - last_emit_epoch < interval_sec:
+            return False
+
+        last_emit_by_type[log_type] = now_epoch
+        state["last_emit_by_type"] = last_emit_by_type
+        save_runtime_state(state)
+        return True
+    except (OSError, ValueError, TypeError):
+        # Preserve original behavior on filesystem issues.
+        return True
+
+def is_scripted_input_mode(args):
+    return args.log_type is not None and args.count is None and args.start is None and args.end is None
 
 def main():
     parser = argparse.ArgumentParser(description="Generate fake log data for Splunk testing")
@@ -136,9 +263,12 @@ def main():
     if args.start and args.end and args.end <= args.start:
         parser.error("--end must be later than --start")
 
+    load_runtime_env_from_lookup()
+
     log_type = args.log_type or random.choice(list(log_generators.keys()))
     num_entries = args.count or random.randint(1, 5)
     log_func = log_generators[log_type]
+    scripted_input_mode = is_scripted_input_mode(args)
 
     if args.start and args.end:
         time_range = (args.end - args.start).total_seconds()
@@ -150,7 +280,10 @@ def main():
         timestamps = [datetime.datetime.now() for _ in range(num_entries)]
 
     for timestamp in timestamps:
-        print(log_func(timestamp))
+        event_line = log_func(timestamp)
+        if scripted_input_mode and not should_emit_event(log_type):
+            continue
+        print(event_line)
 
 if __name__ == "__main__":
     main()
