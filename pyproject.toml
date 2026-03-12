@@ -1,6 +1,6 @@
 [project]
 name = "copycat"
-version = "0.1.0"
+version = "0.2.0"
 description = "A lightweight, dependency-free Splunk app that generates realistic fake logs for testing AI agents, parsing rules, and data analysis workflows."
 readme = "README.md"
 requires-python = "==3.9.*"
