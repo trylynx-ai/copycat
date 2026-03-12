@@ -1,6 +1,9 @@
+[![Static Badge](https://img.shields.io/badge/8540-green?logo=splunk&logoSize=auto&labelColor=gray)](https://splunkbase.splunk.com/app/8540)
+
+
 # ![Logo](copycat/static/appIcon.png) CopyCat
 
-A lightweight, dependency-free Splunk add-on that generates realistic mock logs for testing AI agents, parsing rules, and data analysis workflows.
+A lightweight, dependency-free Splunk app/add-on that generates realistic mock logs for testing AI agents, parsing rules, and data analysis workflows.
 
 ## Goal
 
@@ -12,7 +15,9 @@ This project provides a log generator designed to:
 
 ### Features
 
-- **Splunk Add-on:** Automatically generates logs every 10 seconds via scripted inputs
+- **Simple Splunk UI:** Choose enabled log types and target ingestion in MB/day
+- **Auto pacing:** The app computes the effective log interval automatically from selected types and MB/day target
+- **Safe defaults:** If no UI config is present, behavior stays as before
 - **CLI Tool:** Standalone Python script for manual log generation
 - **Backfill:** Generate historical logs with custom date ranges
 - **Zero Dependencies:** Uses Python standard library only (Python 3.9 for full Splunk compatibility)
@@ -37,11 +42,23 @@ CopyCat generates various distinct log types, each with realistic formatting and
 
 ## Installation
 
-### As a Splunk Add-on
+### As a Splunk App / Add-on
 
 1. Copy the `copycat/` directory to `$SPLUNK_HOME/etc/apps/`
 2. Restart Splunk: `$SPLUNK_HOME/bin/splunk restart`
-3. Logs will automatically start generating every 10 seconds
+3. Open the **CopyCat** app
+4. In `CopyCat - Configurazione`, choose:
+   - enabled log types
+   - target ingestion in `MB/giorno`
+5. Click Submit to save
+
+Notes:
+
+- The app stores settings in `copycat/lookups/copycat_env.csv`.
+- Runtime env vars used by the generator:
+  - `COPYCAT_LOG_TYPES`
+  - `COPYCAT_MAX_INGEST_MB_DAY`
+- Effective interval is computed automatically from daily MB target and selected log types, with a minimum of 10 seconds.
 
 ### As a Standalone CLI Tool
 

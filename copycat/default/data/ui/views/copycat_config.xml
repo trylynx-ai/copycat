@@ -1,0 +1,116 @@
+<form version="1.1">
+  <label>CopyCat - Configurazione</label>
+  <description>Scegli tipi di log e volume obiettivo. L'app calcola automaticamente ogni quanti secondi generare i log.</description>
+  <fieldset submitButton="true" autoRun="false">
+    <input type="multiselect" token="log_types">
+      <label>Tipi di log abilitati</label>
+      <delimiter>,</delimiter>
+      <default>app,security,network,docker,database,webserver,system,api,error,metrics</default>
+      <choice value="app">Application</choice>
+      <choice value="security">Security</choice>
+      <choice value="network">Network</choice>
+      <choice value="docker">Docker</choice>
+      <choice value="database">Database</choice>
+      <choice value="webserver">Webserver</choice>
+      <choice value="system">System</choice>
+      <choice value="api">API</choice>
+      <choice value="error">Error</choice>
+      <choice value="metrics">Metrics</choice>
+    </input>
+    <input type="text" token="max_mb_per_day">
+      <label>Volume target MB/giorno (vuoto = default 10s)</label>
+      <default></default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Intervallo calcolato automaticamente</title>
+      <table>
+        <search>
+          <query>| makeresults
+| eval selected=split(trim("$form.log_types$"), ",")
+| eval max_mb=tonumber("$form.max_mb_per_day$")
+| eval max_mb=if(isnull(max_mb) OR max_mb&lt;=0, null(), max_mb)
+| eval n_app=if(mvfind(selected, "app")&gt;=0, 1, 0)
+| eval n_security=if(mvfind(selected, "security")&gt;=0, 1, 0)
+| eval n_network=if(mvfind(selected, "network")&gt;=0, 1, 0)
+| eval n_docker=if(mvfind(selected, "docker")&gt;=0, 1, 0)
+| eval n_database=if(mvfind(selected, "database")&gt;=0, 1, 0)
+| eval n_webserver=if(mvfind(selected, "webserver")&gt;=0, 1, 0)
+| eval n_system=if(mvfind(selected, "system")&gt;=0, 1, 0)
+| eval n_api=if(mvfind(selected, "api")&gt;=0, 1, 0)
+| eval n_error=if(mvfind(selected, "error")&gt;=0, 1, 0)
+| eval n_metrics=if(mvfind(selected, "metrics")&gt;=0, 1, 0)
+| eval selected_types=n_app+n_security+n_network+n_docker+n_database+n_webserver+n_system+n_api+n_error+n_metrics
+| eval bytes_per_cycle=(n_app*130)+(n_security*95)+(n_network*105)+(n_docker*100)+(n_database*140)+(n_webserver*115)+(n_system*100)+(n_api*120)+(n_error*150)+(n_metrics*90)
+| eval raw_interval_sec=if(isnull(max_mb), 10, ceil((bytes_per_cycle*86400)/(max_mb*1024*1024)))
+| eval applied_interval_sec=if(raw_interval_sec&lt;10, 10, raw_interval_sec)
+| eval estimated_mb_day=round((bytes_per_cycle*86400/applied_interval_sec)/1024/1024, 3)
+| eval events_per_day=round((selected_types*86400)/applied_interval_sec, 2)
+| eval note=if(isnull(max_mb), "Nessun volume impostato: default 10s", "Intervallo calcolato da volume target")
+| table selected_types bytes_per_cycle applied_interval_sec estimated_mb_day events_per_day note
+| rename selected_types AS "Tipi selezionati" bytes_per_cycle AS "Byte per ciclo stimati" applied_interval_sec AS "Intervallo applicato (sec)" estimated_mb_day AS "MB/giorno stimati" events_per_day AS "Eventi/giorno stimati" note AS "Nota"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Salvataggio configurazione</title>
+      <table>
+        <search>
+          <query>| makeresults
+| eval updated_at=strftime(now(), "%Y-%m-%dT%H:%M:%S%z")
+| eval copycat_log_types=trim("$form.log_types$")
+| eval limit_raw=trim("$form.max_mb_per_day$")
+| eval limit_num=tonumber(limit_raw)
+| eval copycat_max_ingest_mb_day=if(limit_raw="" OR isnull(limit_num) OR limit_num&lt;=0, "", tostring(round(limit_num, 3)))
+| table updated_at copycat_log_types copycat_max_ingest_mb_day
+| outputlookup copycat_env
+| eval status="Configurazione salvata"
+| table status updated_at copycat_log_types copycat_max_ingest_mb_day
+| rename status AS "Esito" updated_at AS "Aggiornato il" copycat_log_types AS "COPYCAT_LOG_TYPES" copycat_max_ingest_mb_day AS "COPYCAT_MAX_INGEST_MB_DAY"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Configurazione attuale</title>
+      <table>
+        <search>
+          <query>| inputlookup copycat_env
+| eval selected=split(copycat_log_types, ",")
+| eval max_mb=tonumber(copycat_max_ingest_mb_day)
+| eval max_mb=if(isnull(max_mb) OR max_mb&lt;=0, null(), max_mb)
+| eval n_app=if(mvfind(selected, "app")&gt;=0, 1, 0)
+| eval n_security=if(mvfind(selected, "security")&gt;=0, 1, 0)
+| eval n_network=if(mvfind(selected, "network")&gt;=0, 1, 0)
+| eval n_docker=if(mvfind(selected, "docker")&gt;=0, 1, 0)
+| eval n_database=if(mvfind(selected, "database")&gt;=0, 1, 0)
+| eval n_webserver=if(mvfind(selected, "webserver")&gt;=0, 1, 0)
+| eval n_system=if(mvfind(selected, "system")&gt;=0, 1, 0)
+| eval n_api=if(mvfind(selected, "api")&gt;=0, 1, 0)
+| eval n_error=if(mvfind(selected, "error")&gt;=0, 1, 0)
+| eval n_metrics=if(mvfind(selected, "metrics")&gt;=0, 1, 0)
+| eval selected_types=n_app+n_security+n_network+n_docker+n_database+n_webserver+n_system+n_api+n_error+n_metrics
+| eval bytes_per_cycle=(n_app*130)+(n_security*95)+(n_network*105)+(n_docker*100)+(n_database*140)+(n_webserver*115)+(n_system*100)+(n_api*120)+(n_error*150)+(n_metrics*90)
+| eval raw_interval_sec=if(isnull(max_mb), 10, ceil((bytes_per_cycle*86400)/(max_mb*1024*1024)))
+| eval applied_interval_sec=if(raw_interval_sec&lt;10, 10, raw_interval_sec)
+| eval estimated_mb_day=round((bytes_per_cycle*86400/applied_interval_sec)/1024/1024, 3)
+| table updated_at copycat_log_types copycat_max_ingest_mb_day applied_interval_sec estimated_mb_day
+| rename updated_at AS "Aggiornato il" copycat_log_types AS "COPYCAT_LOG_TYPES" copycat_max_ingest_mb_day AS "COPYCAT_MAX_INGEST_MB_DAY" applied_interval_sec AS "Intervallo applicato (sec)" estimated_mb_day AS "MB/giorno stimati"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>

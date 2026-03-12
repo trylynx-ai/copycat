@@ -1,0 +1,2 @@
+updated_at,copycat_log_types,copycat_max_ingest_mb_day
+2026-01-01T00:00:00+0000,"app,security,network,docker,database,webserver,system,api,error,metrics",
