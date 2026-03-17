@@ -2,9 +2,8 @@ name: AppInspect
 
 on:
   push:
-    branches:
-      - main
-      - release
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
@@ -27,11 +26,11 @@ jobs:
       - name: Run AppInspect
         uses: splunk/appinspect-cli-action@v2
         with:
-          app_path: 'build/copycat.tgz'
+          app_path: build/copycat.tgz
 
       - name: Upload app as artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/release'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v7
         with:
-          path: 'build/copycat.tgz'
+          path: build/copycat.tgz
           compression-level: 0
