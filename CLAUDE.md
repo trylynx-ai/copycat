@@ -26,7 +26,7 @@ There is no test suite, linter, or formatter configured. Verify changes by runni
 The whole app is four moving parts that must stay in sync per log type:
 
 1. **`copycat/bin/copycat.py`** - stdlib-only generator. One `generate_<type>_logs(timestamp)` function per type, all registered in the `log_generators` dict, which is also the source of truth for argparse's `choices`. Each function returns a single line beginning with the timestamp. `main()` prints one event per line to stdout; with `--start`/`--end` it produces sorted random timestamps in that range (backfill), otherwise `datetime.now()`.
-2. **`copycat/default/inputs.conf`** - one `[script://./bin/copycat.py <type>]` stanza per type, `interval = 10`, `python.version = python3.9`, routing to `index = copycat_<type>` / `sourcetype = copycat:<type>`.
+2. **`copycat/default/inputs.conf`** - one `[script://$SPLUNK_HOME/etc/apps/copycat/bin/copycat.py <type>]` stanza per type, `interval = 10`, `python.version = python3.9` + `python.required = 3.9, 3.13`, routing to `index = copycat_<type>` / `sourcetype = copycat:<type>`. Keep the cmd path absolute; AppInspect warns on relative `./bin/` paths under Splunk Cloud vetting.
 3. **`copycat/default/indexes.conf`** - a `copycat_<type>` index per type.
 4. **`copycat/default/props.conf`** - per-sourcetype `TIME_FORMAT = %Y-%m-%d %T.%f` plus an `EXTRACT-copycat_<type>_fields` regex with named capture groups matching the event format produced by the generator.
 
@@ -36,7 +36,7 @@ Keep `sourcetype` names stable (`copycat:<type>`); they are the contract with an
 
 ## Constraints
 
-- **Python 3.9, standard library only.** 3.9 is what Splunk ships; `pyproject.toml` pins `==3.9.*` and `dependencies = []`. Do not add dependencies or use post-3.9 syntax.
+- **Python 3.9 syntax, standard library only.** The app declares `python.required = 3.9, 3.13` (Splunk 10.2+) alongside legacy `python.version = python3.9` (Splunk 10.1 and lower), so the script must run unchanged on **both**. Stick to 3.9-compatible syntax - it is the lower bound - and verify on 3.13. `pyproject.toml` sets `requires-python = ">=3.9"` and `dependencies = []`. Do not add dependencies.
 - **Scripted-input hygiene:** non-interactive, fast, events to stdout only, no stderr noise.
 - **`default/` is shipped defaults; `local/` is for site overrides** and should not be committed unless explicitly requested. Inputs are intentionally `disabled = false` in `default/` here even though real deployments would toggle them in `local/`.
 - Keep changes lean - minimal comments and abstractions, sane and supportable `.conf` defaults. Assume the reader is a Splunk admin / PS engineer.
