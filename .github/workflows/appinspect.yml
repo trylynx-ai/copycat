@@ -9,7 +9,24 @@ on:
       - main
 
 jobs:
+  scan-source:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run Trivy filesystem scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+          trivy-config: trivy.yaml
+
   validate-app:
+    needs: scan-source
     runs-on: ubuntu-latest
 
     steps:
