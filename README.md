@@ -61,7 +61,7 @@ python copycat/bin/copycat.py [options] [log_type]
 ## CLI Usage
 
 ```
-copycat.py [--help] [--count N] [--start ISO_DATE] [--end ISO_DATE] [log_type[,log_type...]]
+copycat.py [--help] [--count N] [--start ISO_DATE] [--end ISO_DATE] [log_type]
 ```
 
 ### Arguments
