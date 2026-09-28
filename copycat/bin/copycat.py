@@ -3,13 +3,18 @@ import datetime
 import uuid
 import argparse
 
+def weighted_choice(options):
+    return random.choices(list(options), weights=list(options.values()))[0]
+
 def fake_ipv4():
     return f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 255)}"
 
 def fake_user_name():
     first_names = ["john", "jane", "bob", "alice", "charlie", "diana", "eve", "frank"]
     last_names = ["smith", "johnson", "williams", "brown", "jones", "garcia", "miller", "davis"]
-    return f"{random.choice(first_names)}.{random.choice(last_names)}"
+    # earlier names are more common, so a few users dominate like in real environments
+    weights = range(len(first_names), 0, -1)
+    return f"{random.choices(first_names, weights)[0]}.{random.choices(last_names, weights)[0]}"
 
 def fake_sentence():
     words = ["system", "process", "completed", "failed", "started", "stopped", "error", "warning",
@@ -39,42 +44,48 @@ def fake_uuid4():
     return str(uuid.uuid4())
 
 def generate_app_logs(timestamp):
-    levels = ['INFO', 'WARN', 'ERROR', 'DEBUG']
-    return f"{timestamp} [{random.choice(levels)}] {fake_file_path()}: {fake_sentence()}"
+    levels = {'INFO': 75, 'DEBUG': 15, 'WARN': 7, 'ERROR': 3}
+    return f"{timestamp} [{weighted_choice(levels)}] {fake_file_path()}: {fake_sentence()}"
 
 def generate_security_logs(timestamp):
     return f"{timestamp} User {fake_user_name()} login attempt from {fake_ipv4()}"
 
 def generate_network_logs(timestamp):
-    protocols = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS']
-    actions = ['ACCEPT', 'DROP', 'REJECT']
-    return f"{timestamp} {random.choice(protocols)} {fake_ipv4()}:{random.randint(1024, 65535)} -> {fake_ipv4()}:{random.randint(80, 8080)} {random.choice(actions)}"
+    protocols = {'TCP': 50, 'HTTPS': 25, 'UDP': 15, 'HTTP': 7, 'ICMP': 3}
+    dest_ports = {443: 45, 80: 20, 53: 15, 22: 8, 3306: 5, 8080: 5, 3389: 2}
+    actions = {'ACCEPT': 88, 'DROP': 8, 'REJECT': 4}
+    return f"{timestamp} {weighted_choice(protocols)} {fake_ipv4()}:{random.randint(1024, 65535)} -> {fake_ipv4()}:{weighted_choice(dest_ports)} {weighted_choice(actions)}"
 
 def generate_docker_logs(timestamp):
-    containers = ['web-app', 'database', 'redis', 'nginx', 'api-server']
-    actions = ['started', 'stopped', 'restarted', 'failed', 'pulled']
-    return f"{timestamp} Container {random.choice(containers)}-{fake_uuid4()[:8]} {random.choice(actions)}"
+    containers = {'web-app': 35, 'api-server': 25, 'nginx': 20, 'redis': 12, 'database': 8}
+    actions = {'started': 40, 'stopped': 25, 'pulled': 15, 'restarted': 15, 'failed': 5}
+    return f"{timestamp} Container {weighted_choice(containers)}-{fake_uuid4()[:8]} {weighted_choice(actions)}"
 
 def generate_database_logs(timestamp):
-    operations = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP']
-    return f"{timestamp} {random.choice(operations)} query executed on table {fake_word()} by user {fake_user_name()} - {random.randint(1, 1000)}ms"
+    operations = {'SELECT': 70, 'INSERT': 15, 'UPDATE': 10, 'DELETE': 4, 'CREATE': 0.7, 'DROP': 0.3}
+    # log-normal: most queries take a few ms, with a long tail of slow ones
+    return f"{timestamp} {weighted_choice(operations)} query executed on table {fake_word()} by user {fake_user_name()} - {int(random.lognormvariate(2.5, 1.2)) + 1}ms"
 
 def generate_system_logs(timestamp):
-    processes = ['systemd', 'kernel', 'cron', 'ssh', 'sudo']
-    return f"{timestamp} {random.choice(processes)}[{random.randint(1000, 9999)}]: {fake_sentence()}"
+    processes = {'systemd': 30, 'cron': 25, 'ssh': 20, 'kernel': 15, 'sudo': 10}
+    return f"{timestamp} {weighted_choice(processes)}[{random.randint(1000, 9999)}]: {fake_sentence()}"
 
 def generate_api_logs(timestamp):
-    endpoints = ['/api/users', '/api/orders', '/api/products', '/api/auth', '/api/payments']
-    methods = ['GET', 'POST', 'PUT', 'DELETE']
-    return f"{timestamp} {random.choice(methods)} {random.choice(endpoints)} from {fake_ipv4()} - Response: {random.choice([200, 400, 401, 500])} - {random.randint(10, 500)}ms"
+    endpoints = {'/api/products': 35, '/api/users': 25, '/api/orders': 20, '/api/auth': 12, '/api/payments': 8}
+    methods = {'GET': 70, 'POST': 20, 'PUT': 7, 'DELETE': 3}
+    statuses = {200: 90, 404: 3, 400: 3, 401: 2.5, 500: 1.5}
+    return f"{timestamp} {weighted_choice(methods)} {weighted_choice(endpoints)} from {fake_ipv4()} - Response: {weighted_choice(statuses)} - {int(random.lognormvariate(4, 0.6)) + 1}ms"
 
 def generate_error_logs(timestamp):
-    errors = ['NullPointerException', 'ConnectionTimeout', 'OutOfMemoryError', 'ValidationError', 'AuthenticationError']
-    return f"{timestamp} {random.choice(errors)} in {fake_file_path()}:{random.randint(1, 1000)} - {fake_sentence()}"
+    errors = {'ValidationError': 35, 'ConnectionTimeout': 25, 'AuthenticationError': 20, 'NullPointerException': 15, 'OutOfMemoryError': 5}
+    return f"{timestamp} {weighted_choice(errors)} in {fake_file_path()}:{random.randint(1, 1000)} - {fake_sentence()}"
 
 def generate_metrics_logs(timestamp):
-    metrics = ['CPU', 'Memory', 'Disk', 'Network']
-    return f"{timestamp} {random.choice(metrics)} usage: {random.randint(10, 95)}% - Host: {fake_hostname()}"
+    # (mean, stddev) of typical usage per resource
+    metrics = {'CPU': (35, 15), 'Memory': (60, 12), 'Disk': (55, 15), 'Network': (20, 10)}
+    metric = random.choice(list(metrics))
+    usage = min(99, max(1, round(random.gauss(*metrics[metric]))))
+    return f"{timestamp} {metric} usage: {usage}% - Host: {fake_hostname()}"
 
 log_generators = {
     "app": generate_app_logs,
